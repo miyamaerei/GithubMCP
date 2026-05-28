@@ -1,0 +1,9 @@
+{
+  "Database": {
+    "Path": "mcp_users.db"
+  },
+  "Git": {
+    "AuthType": "Token",
+    "Token": ""
+  }
+}

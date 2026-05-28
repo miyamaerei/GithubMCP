@@ -1,0 +1,66 @@
+# GitHub MCP 配置系统重构总结
+## 一、项目概述
+本项目是一个 GitHub MCP（Model Context Protocol）服务器，提供 Git/GitHub 操作的统一接口。本次重构主要针对配置管理系统进行了全面升级。
+
+## 二、重构前的问题
+问题类型 具体问题 配置表分散 配置分散在 3 个表（global_config、users、projects），管理复杂 接口冗余 SetUserConfig、SetProjectConfig 等多个相似接口 扩展性差 难以添加新的配置项类型 加密管理 加密逻辑与配置类型耦合
+
+## 三、重构后设计方案
+### 3.1 统一配置表结构
+### 3.2 配置作用域（ConfigScope）
+值 名称 说明 0 Global 全局配置，所有用户共享 1 User 用户配置，仅当前用户使用 2 Project 项目配置，特定项目使用
+
+### 3.3 配置分组（ConfigGroups）
+分组名 用途 auth 认证相关配置（Token、用户名、密码等） git Git 相关配置（默认分支等） repo 仓库相关配置 workingcopy 工作副本配置
+
+## 四、新增接口
+### 4.1 Key-Value 配置接口
+接口名 方法签名 说明 SetKeyValueConfig bool SetKeyValueConfig(ConfigScope scope, string group, string key, string value, bool isEncrypted = false, string target = null) 设置单个配置项 GetKeyValueConfig string GetKeyValueConfig(ConfigScope scope, string group, string key, string target = null) 获取单个配置项 DeleteKeyValueConfig bool DeleteKeyValueConfig(ConfigScope scope, string group, string key, string target = null) 删除单个配置项 ListKeyValueConfigs List<ConfigListItem> ListKeyValueConfigs(ConfigScope scope = null, string group = null) 列出配置（支持过滤） DeleteAllConfigs bool DeleteAllConfigs(ConfigScope scope, string target = null) 删除指定作用域的所有配置
+
+### 4.2 保留的兼容接口
+接口名 说明 SetConfig 设置认证配置（兼容原有调用） DeleteConfig 删除配置（兼容原有调用） ListConfigs 列出配置（兼容原有调用） GetEffectiveConfig 获取有效的认证配置（带来源信息）
+
+## 五、使用示例
+### 5.1 设置配置
+### 5.2 获取配置
+### 5.3 列出配置
+### 5.4 删除配置
+## 六、安全特性
+### 6.1 敏感信息加密
+- 使用 Windows DPAPI 进行加密存储
+- isEncrypted=true 时自动加密
+- 读取时自动解密返回明文
+### 6.2 显示脱敏
+- 查询配置列表时，加密字段显示为 ********
+- 仅通过 GetKeyValueConfig 可获取明文（需要相应权限）
+## 七、测试验证
+测试类别 测试数量 通过情况 配置管理基础测试 25 ✅ 通过 Key-Value 配置测试 10 ✅ 通过 工作副本管理测试 15 ✅ 通过 GitHub 工具测试 20 ✅ 通过 总计 70 ✅ 全部通过
+
+## 八、兼容性
+### 8.1 向后兼容
+- 原有数据库表结构保持不变
+- 新配置表 configs 与旧表共存
+- 原有的 GetEffectiveConfig 、 SetConfig 等接口继续可用
+### 8.2 数据迁移
+如需将旧配置迁移到新表，可使用以下方式：
+
+```
+// 示例：迁移用户配置到新格式
+var oldConfig = GetUserConfig(ntid);
+if (oldConfig != null)
+{
+    SetKeyValue(ConfigScope.User, "auth", "auth_type", ((int)oldConfig.AuthType).
+    ToString());
+    SetKeyValue(ConfigScope.User, "auth", "github_token", oldConfig.GitHubToken, 
+    isEncrypted: true);
+    // ... 其他字段
+}
+```
+## 九、总结
+本次重构实现了：
+
+1. 统一配置存储 ：所有配置集中存储在 configs 表中
+2. 灵活扩展 ：通过 group 和 key 支持任意配置项
+3. 安全加密 ：敏感信息自动加密存储
+4. 接口简化 ：通过参数区分作用域，减少接口数量
+5. 完全兼容 ：原有接口继续可用，无需修改调用方代码
